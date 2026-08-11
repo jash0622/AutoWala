@@ -1,0 +1,573 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   THEME TOKENS
+   --------------------------------------------------------------------------
+   Every number below is measured off the reference (hornokplease.xyz) and
+   expressed as a fraction of the VIEWPORT, not as a fixed pixel value — that
+   is what makes the composition hold together at any window size.
+
+   Reference measurements (viewport-relative):
+     title width ......... 31% of viewport width
+     title centre ........ 26% from top
+     horn button centre .. 49% from top
+     lyrics ticker ....... 30% from bottom
+     player card ......... 37% of viewport width, bottom edge 11% from bottom
+     vehicle ............. 20vh tall, wheels 8.7% from bottom, fully in frame
+     road band ........... starts 7% from bottom
+   ========================================================================== */
+:root {
+  /* Font stacks */
+  --body: 'Baloo Bhai 2', 'Hind', 'Noto Sans Devanagari', system-ui, sans-serif;
+  --ui: 'Poppins', 'Inter', system-ui, -apple-system, sans-serif;
+  --serif-deva: 'Tiro Devanagari Hindi', 'Noto Serif Devanagari', Georgia, serif;
+
+  /* Hero logo — 7.4vw lands the wordmark at 31% of viewport width, matching
+     the reference. GSAP can tween these variables directly. */
+  --logo-size: clamp(2.75rem, 7.4vw, 9rem);
+  --logo-x: 0px;
+
+  /* ---- Sunset-on-the-highway palette (blue sky → crimson → dark road) ---- */
+  --c-sky: #1b3f75;
+  --c-sky-2: #24406e;
+  --c-dusk: #33305e;
+  --c-wine: #5b1b3e;
+  --c-crimson: #b3212b;
+  --c-crimson-d: #8d1a22;
+  --c-deep: #3d0a11;
+  --c-road: #0b0407;
+  --c-sun: #e86034;
+
+  --c-cream: #f5f1e8;
+  --c-cream-dim: #d8d2c4;
+  --c-live: #3cff7a;
+  --c-auto-yellow: #ffc72c;
+  --c-auto-black: #111111;
+
+  /* Glass */
+  --glass-bg: rgba(20, 20, 30, 0.5);
+  --glass-bg-soft: rgba(20, 20, 30, 0.34);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-blur: 18px;
+
+  /* ---- Layout rhythm ---- */
+  /* The dark road strip at the very bottom — vehicle stands on it, player
+     overlaps it. This is what the reference has as the "black proper band". */
+  --road-h: 7vh;
+  /* gap between the player card and the bottom of the viewport */
+  --player-bottom: 2.5vh;
+  /* measured at runtime by PlayerBar (ResizeObserver) — see the component */
+  --player-h: 116px;
+  /* reference positions */
+  --ticker-bottom: 26vh;
+  --horn-top: 52%;
+}
+
+@media (min-width: 640px) {
+  :root {
+    --road-h: 7vh;
+    --player-bottom: 3vh;
+    --ticker-bottom: 28vh;
+    --horn-top: 50%;
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --road-h: 7vh;
+    --player-bottom: 4vh;
+    --ticker-bottom: 30vh;
+    --horn-top: 49%;
+  }
+}
+
+/* Landscape phones only. Deliberately 500px and not 560px: short laptop
+   windows land around 560–570px of viewport height, and having the whole
+   composition jump as you nudge the window edge felt broken. */
+@media (max-height: 500px) {
+  :root {
+    --logo-size: clamp(1.9rem, 5.6vw, 3.2rem);
+    --road-h: 6vh;
+    --player-bottom: 2vh;
+    --ticker-bottom: 21vh;
+    --horn-top: 46%;
+  }
+}
+
+/* ==========================================================================
+   BASE
+   ========================================================================== */
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--ui);
+    color: var(--c-cream);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+
+    /* Guaranteed non-WebGL fallback — the same sunset the shader paints:
+       soft sun low-left, warm bloom, then blue → crimson → black road. */
+    background-color: var(--c-road);
+    background-image:
+      radial-gradient(
+        13vh 13vh at 17% 64%,
+        rgba(232, 96, 52, 0.45),
+        rgba(232, 96, 52, 0.1) 62%,
+        transparent 100%
+      ),
+      radial-gradient(58% 40% at 46% 76%, rgba(196, 44, 44, 0.4), transparent 72%),
+      linear-gradient(
+        180deg,
+        var(--c-sky) 0%,
+        var(--c-sky-2) 10%,
+        var(--c-dusk) 22%,
+        var(--c-wine) 40%,
+        #93202f 58%,
+        var(--c-crimson) 72%,
+        var(--c-crimson-d) 84%,
+        var(--c-deep) 92%,
+        #14060a 96%,
+        var(--c-road) 100%
+      );
+    background-attachment: fixed;
+  }
+
+  /* Visible focus states everywhere (keyboard accessibility) */
+  :focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.7);
+    outline-offset: 3px;
+    border-radius: 8px;
+  }
+
+  button {
+    font-family: inherit;
+  }
+
+  ::selection {
+    background: var(--c-crimson);
+    color: var(--c-cream);
+  }
+}
+
+/* ==========================================================================
+   COMPONENT LAYER
+   ========================================================================== */
+@layer components {
+  .glass {
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(135%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(135%);
+    border: 1px solid var(--glass-border);
+    box-shadow:
+      0 24px 60px -24px rgba(0, 0, 0, 0.6),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+  }
+
+  .glass-soft {
+    background: var(--glass-bg-soft);
+    -webkit-backdrop-filter: blur(14px) saturate(130%);
+    backdrop-filter: blur(14px) saturate(130%);
+    border: 1px solid var(--glass-border);
+  }
+
+  /* LIGHT frost — used by the horn button, which floats over the plain
+     gradient where a blur still reads nicely. */
+  .frost {
+    background: rgba(255, 255, 255, 0.085);
+    -webkit-backdrop-filter: blur(22px) saturate(150%);
+    backdrop-filter: blur(22px) saturate(150%);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow:
+      0 20px 50px -22px rgba(0, 0, 0, 0.55),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.13);
+  }
+
+  /* Fully transparent panel — NO backdrop blur. The player card sits in front
+     of the auto-rickshaw, and blurring smeared the artwork behind it. Just an
+     edge, a whisper of white, and a lift shadow. */
+  .glass-clear {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    box-shadow:
+      0 20px 50px -26px rgba(0, 0, 0, 0.45),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.12);
+  }
+
+  /* With no blur behind it, text can land on the auto's bright yellow roof —
+     these shadows keep it legible without adding a plate behind the words. */
+  .legible {
+    text-shadow:
+      0 1px 2px rgba(4, 2, 8, 0.55),
+      0 2px 12px rgba(4, 2, 8, 0.4);
+  }
+
+  /* Same idea for the SVG control glyphs */
+  .icon-legible {
+    filter: drop-shadow(0 1px 2px rgba(4, 2, 8, 0.6));
+  }
+
+  /* Thin outlined circle — the top-right ambient toggle */
+  .icon-ring {
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.03);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+  .icon-ring:hover {
+    border-color: rgba(255, 255, 255, 0.55);
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  /* Signature auto-rickshaw yellow/black stripe — used sparingly, only on the
+     playlist panel (the "inside the auto" surface). */
+  .auto-stripe {
+    position: relative;
+  }
+  .auto-stripe::after {
+    content: '';
+    position: absolute;
+    left: 16%;
+    right: 16%;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 2px;
+    background: repeating-linear-gradient(
+      90deg,
+      var(--c-auto-yellow) 0 10px,
+      var(--c-auto-black) 10px 18px
+    );
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  /* ---- Hero logo, per the reference spec (variable driven) ---- */
+  .logo {
+    translate: var(--logo-x) 0;
+    display: flex;
+    align-items: baseline;
+    gap: 0.18em;
+    font-family: var(--body);
+    font-weight: 800;
+    font-size: var(--logo-size);
+    line-height: 1;
+    letter-spacing: -0.01em;
+    color: rgb(255, 255, 255);
+    /* soft white halo, not a coloured glow */
+    text-shadow:
+      0 1px 0 rgba(0, 0, 0, 0.12),
+      0 6px 34px rgba(255, 255, 255, 0.22),
+      0 14px 60px rgba(0, 0, 0, 0.3);
+    will-change: transform, translate;
+  }
+
+  .logo_line {
+    display: inline-block;
+    will-change: transform, opacity;
+  }
+
+  /* ---- Absolute slots ----
+     The ticker and panel use max() so they honour the reference position but
+     can never be overlapped by a taller-than-expected player card. */
+  .slot-ticker {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: max(var(--ticker-bottom), calc(var(--player-h) + var(--player-bottom) + 18px));
+  }
+
+  .slot-panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--player-h) + var(--player-bottom) + 10px);
+  }
+
+  .slot-player {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: var(--player-bottom);
+  }
+
+  .slot-horn {
+    position: absolute;
+    top: var(--horn-top);
+    transform: translateY(-50%);
+    left: 0.75rem;
+  }
+
+  @media (min-width: 640px) {
+    .slot-horn {
+      left: 1.25rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .slot-horn {
+      left: 2rem;
+    }
+  }
+
+  /* ---- Marquee for overflowing track titles ---- */
+  .marquee-track {
+    display: inline-block;
+    white-space: nowrap;
+  }
+  .marquee-track.is-scrolling {
+    animation: marquee var(--marquee-duration, 12s) linear infinite;
+  }
+
+  /* ---- Skeleton shimmer ---- */
+  .shimmer {
+    position: relative;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.13), transparent);
+    animation: shimmer 1.6s ease-in-out infinite;
+  }
+
+  /* ---- Custom scrollbar for the playlist ---- */
+  .scroll-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+  }
+  .scroll-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+  .scroll-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scroll-thin::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.24);
+    border-radius: 999px;
+  }
+  .scroll-thin::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.45);
+  }
+
+  /* Minimum comfortable touch target */
+  .tap {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* One viewport, no scrolling. svh keeps mobile browser chrome from
+     clipping the player bar. */
+  .app-shell {
+    height: 100vh;
+    height: 100svh;
+    min-height: 100vh;
+    min-height: 100svh;
+    isolation: isolate;
+  }
+}
+
+/* ==========================================================================
+   UTILITIES / KEYFRAMES
+   ========================================================================== */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .drag-none {
+    -webkit-user-drag: none;
+    user-select: none;
+  }
+}
+
+@keyframes marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(calc(-1 * var(--marquee-distance, 50%)));
+  }
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Live dot */
+@keyframes livePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(60, 255, 122, 0.5);
+    opacity: 1;
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(60, 255, 122, 0);
+    opacity: 0.9;
+  }
+}
+.live-dot {
+  animation: livePulse 2.1s ease-out infinite;
+}
+
+/* Equalizer bars for the now-playing playlist row */
+@keyframes eq {
+  0%,
+  100% {
+    transform: scaleY(0.28);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+.eq-bar {
+  transform-origin: bottom center;
+  animation: eq 0.9s ease-in-out infinite;
+}
+
+/* Slow drifting warm glow — used only by the no-WebGL fallback layer.
+   Transform-only, so it stays on the compositor. */
+@keyframes bgDrift {
+  0% {
+    transform: translate3d(-4%, 2%, 0) scale(1.04);
+  }
+  50% {
+    transform: translate3d(4%, -3%, 0) scale(1.12);
+  }
+  100% {
+    transform: translate3d(-4%, 2%, 0) scale(1.04);
+  }
+}
+.bg-drift {
+  animation: bgDrift 30s ease-in-out infinite;
+}
+
+/* ==========================================================================
+   AUTO-RICKSHAW GRAPHIC
+   --------------------------------------------------------------------------
+   The supplied PNG carries transparent padding: the vehicle occupies roughly
+   the middle 49% of the file's height and 84% of its width. Everything is
+   expressed against --auto-h (rendered height of the whole PNG) so the WHEELS
+   — not the file's bottom edge — land on --auto-bottom.
+
+     vehicle height ≈ 0.494 × --auto-h
+     blank strip below the wheels ≈ 0.254 × --auto-h
+
+   Reference sizing: the vehicle is ~20vh tall, sits fully inside the frame
+   centre-right, and its wheels rest just above the dark road band.
+   ========================================================================== */
+@layer components {
+  /* ---- The dark road strip at the bottom of the viewport ----
+     Both mobile & desktop: a pure-black band pinned to the bottom, full
+     width. The rickshaw's wheels sit on it; the player card floats above. */
+  .road-strip {
+    position: absolute;
+    z-index: 5;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: var(--road-h);
+    background: linear-gradient(180deg, #0d0509 0%, var(--c-road) 28%);
+    pointer-events: none;
+  }
+
+  .rickshaw-layer {
+    --auto-h: min(48vh, 346px);
+    /* Wheels sit right on the top edge of the road strip */
+    --auto-bottom: var(--road-h);
+    --auto-right: -2%;
+    --auto-vehicle-w: calc(0.714 * var(--auto-h));
+  }
+
+  @media (min-width: 640px) {
+    .rickshaw-layer {
+      --auto-h: min(54vh, 430px);
+      --auto-right: 4%;
+    }
+  }
+
+  @media (min-width: 768px) {
+    .rickshaw-layer {
+      --auto-h: min(58vh, 490px);
+      --auto-right: 14%;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .rickshaw-layer {
+      --auto-h: min(60vh, 540px);
+      --auto-right: 22%;
+    }
+  }
+
+  @media (max-height: 500px) {
+    .rickshaw-layer {
+      --auto-h: min(62vh, 370px);
+    }
+  }
+
+  .rickshaw-img {
+    position: absolute;
+    height: var(--auto-h);
+    width: auto;
+    max-width: none;
+    right: var(--auto-right);
+    /* lift the transparent strip below the wheels back out of frame */
+    bottom: calc(var(--auto-bottom) - 0.254 * var(--auto-h));
+    filter: drop-shadow(0 10px 18px rgba(4, 2, 12, 0.34));
+  }
+
+  /* Soft contact shadow under the wheels. Deliberately light — it sits behind
+     frosted glass, and anything heavier reads as a smudge through the blur. */
+  .rickshaw-shadow {
+    position: absolute;
+    bottom: calc(var(--auto-bottom) - 0.012 * var(--auto-h));
+    right: calc(var(--auto-right) + 0.055 * var(--auto-h));
+    width: var(--auto-vehicle-w);
+    height: calc(0.04 * var(--auto-h));
+    border-radius: 50%;
+    filter: blur(22px);
+    background: radial-gradient(closest-side, rgba(4, 2, 12, 0.42), transparent 74%);
+  }
+
+  /* Pedestrian silhouettes, standing on the road to the left of the auto */
+  .rickshaw-extras {
+    position: absolute;
+    bottom: var(--auto-bottom);
+    right: calc(var(--auto-right) + var(--auto-vehicle-w) + 0.06 * var(--auto-h));
+    height: calc(0.115 * var(--auto-h));
+    width: auto;
+  }
+}
+
+/* ==========================================================================
+   REDUCED MOTION — kill everything expensive.
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
