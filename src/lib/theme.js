@@ -82,4 +82,4 @@ export const TICKER_LINES = [
 ]
 
 /** Flavour text for the status pill. */
-export const STATUS_LABEL = 'on the road'
+export const STATUS_LABEL = 'listening now'

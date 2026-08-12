@@ -250,25 +250,29 @@ function DustField({ active, count = 420 }) {
 export default function AmbientBackground({ active = true }) {
   const prefersReduced = useReducedMotion()
   const [capable, setCapable] = useState(null)
+  const [crashed, setCrashed] = useState(false)
 
   useEffect(() => {
     setCapable(detectWebglCapability())
   }, [])
 
-  // Fallback: the animated CSS gradient already painted on <body>, plus a
-  // slow-drifting warm glow so it never looks completely dead.
-  if (prefersReduced || capable === false) {
-    return (
-      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden="true">
-        <div
-          className={`absolute -inset-1/4 ${prefersReduced ? '' : 'bg-drift'}`}
-          style={{
-            background:
-              'radial-gradient(40% 28% at 46% 76%, rgba(196,44,44,0.34), transparent 72%), radial-gradient(22% 18% at 17% 64%, rgba(232,96,52,0.22), transparent 70%)',
-          }}
-        />
-      </div>
-    )
+  // Fallback layer — shown when WebGL is off, reduced-motion is on, or
+  // the Canvas crashed at runtime. The CSS gradient on <body> is always
+  // present underneath; this just adds a subtle animated glow on top.
+  const FallbackGlow = () => (
+    <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden="true">
+      <div
+        className={`absolute -inset-1/4 ${prefersReduced ? '' : 'bg-drift'}`}
+        style={{
+          background:
+            'radial-gradient(40% 28% at 46% 76%, rgba(196,44,44,0.34), transparent 72%), radial-gradient(22% 18% at 17% 64%, rgba(232,96,52,0.22), transparent 70%)',
+        }}
+      />
+    </div>
+  )
+
+  if (prefersReduced || capable === false || crashed) {
+    return <FallbackGlow />
   }
 
   if (capable === null) {
@@ -284,11 +288,18 @@ export default function AmbientBackground({ active = true }) {
         dpr={[1, 1.5]}
         gl={{
           antialias: false,
-          alpha: false,
+          alpha: true,
           powerPreference: 'low-power',
           preserveDrawingBuffer: false,
+          failIfMajorPerformanceCaveat: true,
         }}
         style={{ position: 'absolute', inset: 0 }}
+        onCreated={({ gl }) => {
+          // Clear to transparent so <body>'s CSS gradient shows through
+          // if the shader is somehow blank.
+          gl.setClearColor(0x000000, 0)
+        }}
+        onError={() => setCrashed(true)}
       >
         <CappedFrameDriver active={active} fps={34} />
         <GradientMesh active={active} />

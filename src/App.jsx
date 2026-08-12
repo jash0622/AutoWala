@@ -135,7 +135,6 @@ export default function App() {
       <StatusBar
         ambientActive={ambientActive}
         onToggleAmbient={() => setAmbientActive((v) => !v)}
-        isPlaying={player.isPlaying}
       />
 
       {showConfigNotice && (
