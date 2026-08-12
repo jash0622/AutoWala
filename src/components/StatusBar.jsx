@@ -2,17 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Pause, Play } from 'lucide-react'
 import { STATUS_LABEL } from '../lib/theme'
+import { registerPresence, onPresenceCount } from '../lib/firebase'
 
 /* ==========================================================================
  *  StatusBar — thin top row.
  *    left   · live clock (12h)
- *    center · pulsing green dot + LIVE LISTENER COUNT
+ *    center · pulsing green dot + REAL-TIME CROSS-DEVICE LISTENER COUNT
  *    right  · circular button that toggles the ambient WebGL motion
  *
- *  The listener count uses a BroadcastChannel + localStorage heartbeat to
- *  count how many tabs/windows have the site open on THIS device. For a
- *  true cross-device count, replace the useLiveCount hook with a WebSocket
- *  connection (e.g. Ably, Pusher, Firebase Presence, or a custom WS server).
+ *  The listener count is powered by Firebase Realtime Database presence.
+ *  Every tab/device that opens the site registers itself; Firebase's
+ *  onDisconnect removes it automatically when the connection drops.
  * ======================================================================== */
 
 function formatClock(date) {
@@ -24,85 +24,22 @@ function formatClock(date) {
 }
 
 /**
- * Counts how many tabs/windows have the site open RIGHT NOW on this device.
- * Uses BroadcastChannel for instant cross-tab sync + localStorage heartbeat
- * as a fallback for browsers that don't support BroadcastChannel.
- *
- * To replace with a real server-side count:
- *   1. Connect to your WebSocket/presence service in useEffect
- *   2. Set `count` from the server's reported presence number
- *   3. Remove the localStorage/BroadcastChannel logic
+ * Real cross-device live count via Firebase RTDB presence.
+ * Works across different devices, browsers, and networks.
  */
 function useLiveCount() {
-  const [count, setCount] = useState(1)
-  const idRef = useRef(null)
+  const [count, setCount] = useState(0)
 
   useEffect(() => {
-    // Generate a unique ID for this tab
-    const tabId = `aw_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-    idRef.current = tabId
+    // Register this tab in the presence system
+    const unregister = registerPresence()
 
-    const STORAGE_KEY = 'autowala_live_tabs'
-    const HEARTBEAT_MS = 2000
-    const STALE_MS = 5000
-
-    const writeSelf = () => {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY)
-        const tabs = raw ? JSON.parse(raw) : {}
-        tabs[tabId] = Date.now()
-        // Prune stale entries
-        const now = Date.now()
-        for (const id of Object.keys(tabs)) {
-          if (now - tabs[id] > STALE_MS) delete tabs[id]
-        }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(tabs))
-        setCount(Object.keys(tabs).length)
-      } catch {
-        setCount(1)
-      }
-    }
-
-    const removeSelf = () => {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY)
-        const tabs = raw ? JSON.parse(raw) : {}
-        delete tabs[tabId]
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(tabs))
-      } catch { /* noop */ }
-    }
-
-    writeSelf()
-    const interval = setInterval(writeSelf, HEARTBEAT_MS)
-
-    // BroadcastChannel for instant cross-tab notification
-    let bc = null
-    try {
-      bc = new BroadcastChannel('autowala_presence')
-      bc.postMessage({ type: 'join', id: tabId })
-      bc.onmessage = () => writeSelf() // re-count on any presence change
-    } catch { /* BroadcastChannel not supported — localStorage alone is fine */ }
-
-    // Cleanup on tab close
-    const onUnload = () => {
-      removeSelf()
-      bc?.postMessage({ type: 'leave', id: tabId })
-      bc?.close()
-    }
-    window.addEventListener('beforeunload', onUnload)
-
-    // Listen for storage changes from other tabs
-    const onStorage = (e) => {
-      if (e.key === STORAGE_KEY) writeSelf()
-    }
-    window.addEventListener('storage', onStorage)
+    // Subscribe to count changes
+    const unsubscribe = onPresenceCount((n) => setCount(n))
 
     return () => {
-      clearInterval(interval)
-      window.removeEventListener('beforeunload', onUnload)
-      window.removeEventListener('storage', onStorage)
-      removeSelf()
-      bc?.close()
+      unregister()
+      unsubscribe()
     }
   }, [])
 
